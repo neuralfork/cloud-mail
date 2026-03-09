@@ -44,6 +44,11 @@
           <Icon icon="si:user-alt-2-line" width="20" height="20" />
           <span class="menu-name" style="margin-left: 21px">{{$t('allUsers')}}</span>
         </el-menu-item>
+        <el-menu-item @click="router.push({name: 'account'})" index="account" v-perm="'user:query'"
+                      :class="route.meta.name === 'account' ? 'choose-item' : ''">
+          <Icon icon="hugeicons:mailbox-01" width="20" height="20" />
+          <span class="menu-name" style="margin-left: 21px">{{$t('allAccounts')}}</span>
+        </el-menu-item>
         <el-menu-item @click="router.push({name: 'all-email'})" index="all-email" v-perm="'all-email:query'"
                       :class="route.meta.name === 'all-email' ? 'choose-item' : ''">
           <Icon icon="fluent:mail-list-28-regular" width="22" height="22" />

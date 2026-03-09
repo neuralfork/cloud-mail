@@ -5,6 +5,8 @@ import userService from './user-service';
 import emailService from './email-service';
 import orm from '../entity/orm';
 import account from '../entity/account';
+import user from '../entity/user';
+import email from '../entity/email';
 import { and, asc, eq, gt, inArray, count, sql, ne, or, lt, desc } from 'drizzle-orm';
 import {accountConst, isDel, settingConst} from '../const/entity-const';
 import settingService from './setting-service';
@@ -105,7 +107,7 @@ const accountService = {
 
 	list(c, params, userId) {
 
-		let { accountId, size, lastSort } = params;
+		let { accountId, size, lastSort, email } = params;
 
 		accountId = Number(accountId);
 		size = Number(size);
@@ -123,18 +125,23 @@ const accountService = {
 			lastSort = 9999999999;
 		}
 
-		return orm(c).select().from(account).where(
-			and(
-				eq(account.userId, userId),
-				eq(account.isDel, isDel.NORMAL),
-					or(
-						lt(account.sort, lastSort),
-						and(
-							eq(account.sort, lastSort),
-							gt(account.accountId, accountId)
-						)
-					))
+		const conditions = [
+			eq(account.userId, userId),
+			eq(account.isDel, isDel.NORMAL),
+			or(
+				lt(account.sort, lastSort),
+				and(
+					eq(account.sort, lastSort),
+					gt(account.accountId, accountId)
 				)
+			)
+		];
+
+		if (email) {
+			conditions.push(sql`${account.email} COLLATE NOCASE LIKE ${'%' + email + '%'}`);
+		}
+
+		return orm(c).select().from(account).where(and(...conditions))
 			.orderBy(desc(account.sort), asc(account.accountId))
 			.limit(size)
 			.all();
@@ -142,10 +149,21 @@ const accountService = {
 
 	async delete(c, params, userId) {
 
-		let { accountId } = params;
+		let { accountId, email } = params;
+		accountId = Number(accountId);
 
 		const user = await userService.selectById(c, userId);
-		const accountRow = await this.selectById(c, accountId);
+		let accountRow = null;
+
+		if (email) {
+			accountRow = await this.selectByEmailIncludeDel(c, email);
+		} else if (accountId) {
+			accountRow = await this.selectById(c, accountId);
+		}
+
+		if (!accountRow || accountRow.isDel === isDel.DELETE) {
+			throw new BizError(t('noUserAccount'));
+		}
 
 		if (accountRow.email === user.email) {
 			throw new BizError(t('delMyAccount'));
@@ -157,7 +175,7 @@ const accountService = {
 
 		await orm(c).update(account).set({ isDel: isDel.DELETE }).where(
 			and(eq(account.userId, userId),
-				eq(account.accountId, accountId)))
+				eq(account.accountId, accountRow.accountId)))
 			.run();
 	},
 
@@ -179,6 +197,10 @@ const accountService = {
 	async physicsDeleteByUserIds(c, userIds) {
 		await emailService.physicsDeleteUserIds(c, userIds);
 		await orm(c).delete(account).where(inArray(account.userId,userIds)).run();
+	},
+
+	async deleteByUserId(c, userId) {
+		await orm(c).update(account).set({ isDel: isDel.DELETE }).where(eq(account.userId, userId)).run();
 	},
 
 	async selectUserAccountCountList(c, userIds, del = isDel.NORMAL) {
@@ -217,25 +239,130 @@ const accountService = {
 		await orm(c).update(account).set({name}).where(and(eq(account.userId, userId),eq(account.accountId, accountId))).run();
 	},
 
-	async allAccount(c, params) {
+	async listAll(c, params) {
 
-		let { userId, num, size } = params
-
-		userId = Number(userId)
+		let { num, size, email, userEmail, isDel: isDelFilter, sortBy, sortOrder } = params
 
 		num = Number(num)
 		size = Number(size)
+		isDelFilter = Number(isDelFilter)
+
+		if (size > 50) {
+			size = 50;
+		}
+
+		if (!size || size < 1) {
+			size = 15;
+		}
+
+		if (!num || num < 1) {
+			num = 1;
+		}
+
+		num = (num - 1) * size;
+
+		const conditions = [];
+
+		if (!Number.isNaN(isDelFilter) && (isDelFilter === isDel.NORMAL || isDelFilter === isDel.DELETE)) {
+			conditions.push(eq(account.isDel, isDelFilter));
+		}
+
+		if (email) {
+			conditions.push(sql`${account.email} COLLATE NOCASE LIKE ${email + '%'}`);
+		}
+
+		if (userEmail) {
+			conditions.push(sql`${user.email} COLLATE NOCASE LIKE ${userEmail + '%'}`);
+		}
+
+		const query = orm(c).select({ ...account, userEmail: user.email })
+			.from(account)
+			.leftJoin(user, eq(account.userId, user.userId));
+
+		const totalQuery = orm(c).select({ total: count() })
+			.from(account)
+			.leftJoin(user, eq(account.userId, user.userId));
+
+		if (conditions.length > 0) {
+			query.where(and(...conditions));
+			totalQuery.where(and(...conditions));
+		}
+
+		if (sortBy === 'name') {
+			if (sortOrder === 'desc') {
+				query.orderBy(desc(account.name), desc(account.accountId));
+			} else {
+				query.orderBy(asc(account.name), asc(account.accountId));
+			}
+		} else {
+			if (sortOrder === 'asc') {
+				query.orderBy(asc(account.createTime), asc(account.accountId));
+			} else {
+				query.orderBy(desc(account.createTime), desc(account.accountId));
+			}
+		}
+
+		const list = await query.limit(size).offset(num).all();
+		const { total } = await totalQuery.get();
+
+		return { list, total }
+	},
+		async allAccount(c, params) {
+
+		let { userId, num, size, email, isDel: isDelFilter, sortBy, sortOrder } = params
+
+		userId = Number(userId)
+		num = Number(num)
+		size = Number(size)
+		isDelFilter = Number(isDelFilter)
 
 		if (size > 30) {
 			size = 30;
+		}
+
+		if (!size || size < 1) {
+			size = 10;
+		}
+
+		if (!num || num < 1) {
+			num = 1;
 		}
 
 		num = (num - 1) * size;
 
 		const userRow = await userService.selectByIdIncludeDel(c, userId);
 
-		const list = await orm(c).select().from(account).where(and(eq(account.userId, userId),ne(account.email,userRow.email))).limit(size).offset(num);
-		const { total } = await orm(c).select({ total: count() }).from(account).where(eq(account.userId, userId)).get();
+		const conditions = [
+			eq(account.userId, userId),
+			ne(account.email, userRow.email)
+		];
+
+		if (!Number.isNaN(isDelFilter) && (isDelFilter === isDel.NORMAL || isDelFilter === isDel.DELETE)) {
+			conditions.push(eq(account.isDel, isDelFilter));
+		}
+
+		if (email) {
+			conditions.push(sql`${account.email} COLLATE NOCASE LIKE ${email + '%'} `);
+		}
+
+		const query = orm(c).select().from(account).where(and(...conditions));
+
+		if (sortBy === 'name') {
+			if (sortOrder === 'desc') {
+				query.orderBy(desc(account.name), desc(account.accountId));
+			} else {
+				query.orderBy(asc(account.name), asc(account.accountId));
+			}
+		} else {
+			if (sortOrder === 'asc') {
+				query.orderBy(asc(account.createTime), asc(account.accountId));
+			} else {
+				query.orderBy(desc(account.createTime), desc(account.accountId));
+			}
+		}
+
+		const list = await query.limit(size).offset(num).all();
+		const { total } = await orm(c).select({ total: count() }).from(account).where(and(...conditions)).get();
 
 		return { list, total }
 	},
@@ -244,6 +371,71 @@ const accountService = {
 		const { accountId } = params
 		await emailService.physicsDeleteByAccountId(c, accountId)
 		await orm(c).delete(account).where(eq(account.accountId, accountId)).run();
+	},
+
+	async markGptBan(c, params) {
+
+		const remove = String(params.remove) === '1' || String(params.remove) === 'true';
+		const keyword = 'OpenAI - Access Deactivated';
+
+		const rows = await orm(c)
+			.select({ accountId: account.accountId })
+			.from(account)
+			.where(and(
+				eq(account.isDel, isDel.NORMAL),
+				sql`EXISTS (SELECT 1 FROM email e WHERE e.account_id = ${account.accountId} AND e.subject COLLATE NOCASE LIKE ${'%' + keyword + '%'})`
+			))
+			.all();
+
+		const accountIds = [...new Set(rows.map(item => item.accountId))];
+
+		if (accountIds.length === 0) {
+			return { total: 0, marked: 0, deleted: 0, accountIds: [] };
+		}
+
+		await orm(c).update(account).set({ status: accountConst.status.GPT_BAN }).where(inArray(account.accountId, accountIds)).run();
+
+		let deleted = 0;
+		if (remove) {
+			await orm(c).update(account).set({ isDel: isDel.DELETE }).where(inArray(account.accountId, accountIds)).run();
+			deleted = accountIds.length;
+		}
+
+		return { total: accountIds.length, marked: accountIds.length, deleted, accountIds };
+	},
+
+	async batchDelete(c, params, userId) {
+		let { accountIds } = params;
+
+		if (!accountIds) {
+			return;
+		}
+
+		accountIds = [...new Set(accountIds.split(',').map(item => Number(item)).filter(Boolean))];
+
+		if (accountIds.length === 0) {
+			return;
+		}
+
+		const userRow = await userService.selectById(c, userId);
+		const accountRows = await orm(c).select().from(account).where(and(
+			eq(account.userId, userId),
+			inArray(account.accountId, accountIds),
+			eq(account.isDel, isDel.NORMAL)
+		)).all();
+
+		if (accountRows.length !== accountIds.length) {
+			throw new BizError(t('noUserAccount'));
+		}
+
+		if (accountRows.some(row => row.email === userRow.email)) {
+			throw new BizError(t('delMyAccount'));
+		}
+
+		await orm(c).update(account).set({ isDel: isDel.DELETE }).where(and(
+			eq(account.userId, userId),
+			inArray(account.accountId, accountIds)
+		)).run();
 	},
 
 	async setAllReceive(c, params, userId) {
@@ -269,3 +461,7 @@ const accountService = {
 };
 
 export default accountService;
+
+
+
+

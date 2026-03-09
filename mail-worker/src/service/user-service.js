@@ -107,6 +107,40 @@ const userService = {
 		await orm(c).delete(user).where(inArray(user.userId, userIds)).run();
 	},
 
+	async deleteByEmail(c, params) {
+		let { emails, email } = params;
+
+		if (!emails && email) {
+			emails = email;
+		}
+
+		if (!emails) {
+			return;
+		}
+
+		emails = emails
+			.split(',')
+			.map(item => item.trim())
+			.filter(Boolean);
+
+		if (emails.length === 0) {
+			return;
+		}
+
+		const userRows = await Promise.all(emails.map(email => this.selectByEmailIncludeDel(c, email)));
+		const userIds = [...new Set(userRows.filter(Boolean).map(item => item.userId))];
+
+		if (userIds.length === 0) {
+			return;
+		}
+
+		await Promise.all(userIds.map(async (userId) => {
+			await this.delete(c, userId);
+			await accountService.deleteByUserId(c, userId);
+			await emailService.deleteByUserId(c, userId);
+		}));
+	},
+
 	async list(c, params) {
 
 		let { num, size, email, timeSort, status } = params;
@@ -173,6 +207,115 @@ const userService = {
 			accountService.selectUserAccountCountList(c, userIds),
 			accountService.selectUserAccountCountList(c, userIds, isDel.DELETE),
 			roleService.selectByIdsHasPermKey(c, types,'email:send')
+		]);
+
+		const receiveMap = Object.fromEntries(emailCounts.map(item => [item.userId, item.count]));
+		const sendMap = Object.fromEntries(sendCounts.map(item => [item.userId, item.count]));
+		const accountMap = Object.fromEntries(accountCounts.map(item => [item.userId, item.count]));
+
+		const delReceiveMap = Object.fromEntries(delEmailCounts.map(item => [item.userId, item.count]));
+		const delSendMap = Object.fromEntries(delSendCounts.map(item => [item.userId, item.count]));
+		const delAccountMap = Object.fromEntries(delAccountCounts.map(item => [item.userId, item.count]));
+
+		for (const user of list) {
+
+			const userId = user.userId;
+
+			user.receiveEmailCount = receiveMap[userId] || 0;
+			user.sendEmailCount = sendMap[userId] || 0;
+			user.accountCount = accountMap[userId] || 0;
+
+			user.delReceiveEmailCount = delReceiveMap[userId] || 0;
+			user.delSendEmailCount = delSendMap[userId] || 0;
+			user.delAccountCount = delAccountMap[userId] || 0;
+
+			const roleIndex = roleList.findIndex(roleRow => user.type === roleRow.roleId);
+			let sendAction = {};
+
+			if (roleIndex > -1) {
+				sendAction.sendType = roleList[roleIndex].sendType;
+				sendAction.sendCount = roleList[roleIndex].sendCount;
+				sendAction.hasPerm = true;
+			} else {
+				sendAction.hasPerm = false;
+			}
+
+			if (user.email === c.env.admin) {
+				sendAction.sendType = constant.ADMIN_ROLE.sendType;
+				sendAction.sendCount = constant.ADMIN_ROLE.sendCount;
+				sendAction.hasPerm = true;
+				user.type = 0
+			}
+
+			user.sendAction = sendAction;
+		}
+
+		return { list, total };
+	},
+
+	async listAllIncludeDel(c, params) {
+
+		let { num, size, email, timeSort, status } = params;
+
+		size = Number(size);
+		num = Number(num);
+		timeSort = Number(timeSort);
+
+		if (size > 50) {
+			size = 50;
+		}
+
+		num = (num - 1) * size;
+
+		const conditions = [];
+
+		if (status > -1) {
+			conditions.push(eq(user.status, status));
+		}
+
+		if (email) {
+			conditions.push(sql`${user.email} COLLATE NOCASE LIKE ${'%' + email + '%'}`);
+		}
+
+		const whereSql = conditions.length ? and(...conditions) : undefined;
+
+		const query = orm(c).select({
+			...user,
+			username: oauth.username,
+			trustLevel: oauth.trustLevel,
+			avatar: oauth.avatar,
+			name: oauth.name
+		}).from(user).leftJoin(oauth, eq(oauth.userId, user.userId));
+
+		if (whereSql) {
+			query.where(whereSql);
+		}
+
+		if (timeSort) {
+			query.orderBy(asc(user.userId));
+		} else {
+			query.orderBy(desc(user.userId));
+		}
+
+		const list = await query.limit(size).offset(num);
+
+		const totalQuery = orm(c).select({ total: count() }).from(user);
+		if (whereSql) {
+			totalQuery.where(whereSql);
+		}
+		const { total } = await totalQuery.get();
+
+		const userIds = list.map(user => user.userId);
+		const types = [...new Set(list.map(user => user.type))];
+
+		const [emailCounts, delEmailCounts, sendCounts, delSendCounts, accountCounts, delAccountCounts, roleList] = await Promise.all([
+			emailService.selectUserEmailCountList(c, userIds, emailConst.type.RECEIVE),
+			emailService.selectUserEmailCountList(c, userIds, emailConst.type.RECEIVE, isDel.DELETE),
+			emailService.selectUserEmailCountList(c, userIds, emailConst.type.SEND),
+			emailService.selectUserEmailCountList(c, userIds, emailConst.type.SEND, isDel.DELETE),
+			accountService.selectUserAccountCountList(c, userIds),
+			accountService.selectUserAccountCountList(c, userIds, isDel.DELETE),
+			roleService.selectByIdsHasPermKey(c, types, 'email:send')
 		]);
 
 		const receiveMap = Object.fromEntries(emailCounts.map(item => [item.userId, item.count]));

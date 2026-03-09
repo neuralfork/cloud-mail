@@ -3,12 +3,35 @@
     <div class="head-opt">
       <Icon v-perm="'account:add'" class="icon add" icon="ion:add-outline" width="23" height="23" @click="add"/>
       <Icon class="icon refresh" icon="ion:reload" width="18" height="18" @click="refresh"/>
+      <Icon
+          v-perm="'account:delete'"
+          class="icon batch-delete"
+          icon="mdi:delete-sweep-outline"
+          width="19"
+          height="19"
+          @click="batchRemove"
+      />
+      <el-input
+          v-model="searchEmail"
+          class="search-input"
+          clearable
+          :placeholder="$t('searchByEmail')"
+          @input="onSearchInput"
+          @clear="onSearchInput"
+      />
     </div>
     <el-scrollbar class="scrollbar" ref="scrollbarRef">
       <div v-infinite-scroll="getAccountList" :infinite-scroll-distance="600" :infinite-scroll-immediate="false">
         <el-card class="item" :class="itemBg(item.accountId)" v-for="(item, index) in accounts" :key="item.accountId"
                  @click="changeAccount(item)">
           <div class="account">
+            <el-checkbox
+                v-if="hasPerm('account:delete') && item.accountId !== userStore.user.account.accountId"
+                class="account-checkbox"
+                :model-value="selectedAccountIds.includes(item.accountId)"
+                @click.stop
+                @change="(checked) => toggleAccountSelect(item.accountId, checked)"
+            />
             {{ item.email }}
           </div>
           <div class="opt">
@@ -132,6 +155,7 @@ import {
   accountList,
   accountAdd,
   accountDelete,
+  accountBatchDelete,
   accountSetName,
   accountSetAllReceive,
   accountSetAsTop
@@ -176,8 +200,12 @@ const addForm = reactive({
 })
 let skeletonRows = 10
 const queryParams = {
-  size: 30
+  size: 30,
+  email: ''
 }
+const searchEmail = ref('')
+const selectedAccountIds = ref([])
+let searchTimer = null
 
 const mySelect = ref()
 
@@ -317,6 +345,49 @@ function remove(account) {
   });
 }
 
+function toggleAccountSelect(accountId, checked) {
+  if (checked) {
+    if (!selectedAccountIds.value.includes(accountId)) {
+      selectedAccountIds.value.push(accountId)
+    }
+    return
+  }
+  selectedAccountIds.value = selectedAccountIds.value.filter(id => id !== accountId)
+}
+
+function batchRemove() {
+  if (selectedAccountIds.value.length === 0) {
+    ElMessage({
+      message: t('selectAccountFirst'),
+      type: 'warning',
+      plain: true,
+    })
+    return
+  }
+
+  ElMessageBox.confirm(t('delAccountsConfirm'), {
+    confirmButtonText: t('confirm'),
+    cancelButtonText: t('cancel'),
+    type: 'warning'
+  }).then(() => {
+    accountBatchDelete(selectedAccountIds.value.join(',')).then(() => {
+      ElMessage({
+        message: t('delSuccessMsg'),
+        type: 'success',
+        plain: true,
+      })
+      refresh()
+    })
+  });
+}
+
+function onSearchInput() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    refresh()
+  }, 300)
+}
+
 function refresh() {
   if (loading.value) {
     return
@@ -326,6 +397,8 @@ function refresh() {
   noLoading.value = false
   queryParams.accountId = 0
   queryParams.lastSort = null
+  queryParams.email = searchEmail.value?.trim() || ''
+  selectedAccountIds.value = []
   getSkeletonRows();
   scrollbarRef.value.setScrollTop(0)
   accounts.splice(0, accounts.length)
@@ -391,7 +464,7 @@ function getAccountList() {
   const accountId = accounts.length > 0 ? accounts.at(-1).accountId : 0;
   const lastSort = accounts.length > 0 ? accounts.at(-1).sort : null;
 
-  accountList(accountId, queryParams.size, lastSort).then(async list => {
+  accountList(accountId, queryParams.size, lastSort, queryParams.email).then(async list => {
 
     let end = Date.now();
     let duration = end - start;
@@ -532,12 +605,22 @@ path[fill="#ffdda1"] {
       margin-left: 10px;
     }
 
+    .batch-delete {
+      margin-left: 10px;
+    }
+
     .add {
       margin-left: 2px;
     }
 
     .head-opt:not(.add) .refresh {
       margin-left: 5px;
+    }
+
+    .search-input {
+      margin-left: 10px;
+      flex: 1;
+      min-width: 120px;
     }
   }
 
@@ -585,6 +668,13 @@ path[fill="#ffdda1"] {
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .account-checkbox {
+      flex-shrink: 0;
     }
 
     .opt {

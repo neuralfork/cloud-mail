@@ -34,8 +34,11 @@ export function userRestore(userId,type) {
     return http.put('/user/restore', {userId,type})
 }
 
-export function userAllAccount(userId, num, size) {
-    return http.get('/user/allAccount', {params:{userId,num,size}})
+export function userAllAccount(userIdOrParams, num, size) {
+    const params = typeof userIdOrParams === 'object'
+        ? {...userIdOrParams}
+        : {userId: userIdOrParams, num, size}
+    return http.get('/user/allAccount', {params})
 }
 
 export function userDeleteAccount(accountId) {

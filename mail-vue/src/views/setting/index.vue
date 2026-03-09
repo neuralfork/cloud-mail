@@ -24,6 +24,15 @@
         <div>{{ userStore.user.email }}</div>
       </div>
       <div class="item">
+        <div>{{$t('language')}}</div>
+        <div>
+          <el-select v-model="settingStore.lang" @change="changeLanguage" style="width: 140px">
+            <el-option label="中文" value="zh" />
+            <el-option label="English" value="en" />
+          </el-select>
+        </div>
+      </div>
+      <div class="item">
         <div>{{$t('password')}}</div>
         <div>
           <el-button type="primary" @click="pwdShow = true">{{$t('changePwdBtn')}}</el-button>
@@ -56,9 +65,11 @@ import router from "@/router/index.js";
 import {accountSetName} from "@/request/account.js";
 import {useAccountStore} from "@/store/account.js";
 import {useI18n} from "vue-i18n";
+import {useSettingStore} from "@/store/setting.js";
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const accountStore = useAccountStore()
+const settingStore = useSettingStore()
 const userStore = useUserStore();
 const setPwdLoading = ref(false)
 const setNameShow = ref(false)
@@ -105,6 +116,11 @@ function setName() {
   }).catch(() => {
     userStore.user.name = name
   })
+}
+
+function changeLanguage(lang) {
+  settingStore.lang = lang
+  locale.value = lang
 }
 
 const pwdShow = ref(false)

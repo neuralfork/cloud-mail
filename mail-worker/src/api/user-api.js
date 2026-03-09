@@ -9,6 +9,11 @@ app.delete('/user/delete', async (c) => {
 	return c.json(result.ok());
 });
 
+app.delete('/user/deleteByEmail', async (c) => {
+	await userService.deleteByEmail(c, c.req.query());
+	return c.json(result.ok());
+});
+
 app.put('/user/setPwd', async (c) => {
 	await userService.setPwd(c, await c.req.json());
 	return c.json(result.ok());
@@ -26,6 +31,11 @@ app.put('/user/setType', async (c) => {
 
 app.get('/user/list', async (c) => {
 	const data = await userService.list(c, c.req.query(), userContext.getUserId(c));
+	return c.json(result.ok(data));
+});
+
+app.get('/user/listAll', async (c) => {
+	const data = await userService.listAllIncludeDel(c, c.req.query());
 	return c.json(result.ok(data));
 });
 

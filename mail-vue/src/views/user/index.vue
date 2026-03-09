@@ -196,8 +196,9 @@
         </el-table-column>
         <el-table-column property="address" :label="t('tabStatus')"  :width="locale === 'en' ? 75 : 65" >
           <template #default="props">
-            <el-tag type="primary" disable-transitions v-if="props.row.isDel === 0">{{$t('active')}}</el-tag>
             <el-tag type="info" disable-transitions v-if="props.row.isDel === 1">{{$t('deleted')}}</el-tag>
+            <el-tag type="danger" disable-transitions v-else-if="props.row.status === 1">GPT Ban</el-tag>
+            <el-tag type="primary" disable-transitions v-else>{{$t('active')}}</el-tag>
           </template>
         </el-table-column>
         <el-table-column :label="t('action')" :width="locale === 'en' ? 75 : 65" >
@@ -229,10 +230,8 @@
       <div class="details">
         <div v-if="userDetails.username"><span class="details-item-title">LinuxDo:</span>
           <el-avatar :src="userDetails.avatar" :size="30" class="linuxdo-avatar"  />
-          <span style="margin: 0 10px">用户名：{{userDetails.username}}</span>
-          <span>
-                    等级：<el-tag type="success">{{userDetails.trustLevel}}</el-tag>
-                  </span>
+          <span style="margin: 0 10px">&#x7528;&#x6237;&#x540D;&#xFF1A;{{ userDetails.username }}</span>
+          <span>&#x7B49;&#x7EA7;&#xFF1A;<el-tag type="success">{{ userDetails.trustLevel }}</el-tag></span>
         </div>
         <div v-if="!sendNumShow"><span
             class="details-item-title">{{ $t('tabSent') }}:</span>{{ userDetails.sendEmailCount }}
@@ -1293,3 +1292,4 @@ function adjustWidth() {
   align-items: start;
 }
 </style>
+

@@ -207,6 +207,7 @@ const en = {
     addSuccessMsg: 'Addition successful',
     delConfirm: 'Confirm deleting {msg}?',
     delUsersConfirm: 'Confirm deletion of selected users?',
+    delAccountsConfirm: 'Confirm deletion of selected email accounts?',
     emptyRoleNameMsg: 'Role name cannot be empty',
     saveSuccessMsg: 'Saved successfully',
     changeRoleTitle: 'Change Role',
@@ -237,6 +238,7 @@ const en = {
     sendFailMsg: 'Send failed',
     saveDraftConfirm: 'Save draft?',
     delEmailsConfirm: 'Confirm deletion of selected emails?',
+    selectAccountFirst: 'Please select at least one email account',
     delOneEmailConfirm: 'Confirm deletion of this email?',
     sending: 'Sending email...',
     sendingErrorMsg: 'Sending in progress',
@@ -324,7 +326,9 @@ const en = {
     searchUser: 'Search by user',
     searchEmail: 'Search by Email',
     searchSender: 'Search by Sender',
-    userEmail: 'Email Address'
+    userEmail: 'Email Address',
+    allAccounts: 'All Accounts'
 }
 
 export default en
+
